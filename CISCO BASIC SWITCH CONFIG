@@ -1,0 +1,343 @@
+1. Enable Privileged Mode
+Switch> enable
+Switch#
+
+2. Enter Global Configuration Mode
+Switch# configure terminal
+Switch(config)#
+
+3. Disable DNS Lookup
+Prevents the switch from trying to resolve mistyped commands as hostnames.
+Switch(config)# no ip domain lookup
+
+4. Set Hostname
+Switch(config)# hostname SW-ACCESS-01
+SW-ACCESS-01(config)#
+
+5. Set Time Zone and Time
+For Bangladesh:
+SW-ACCESS-01(config)# clock timezone BDT 6 0
+Set the clock manually if necessary:
+SW-ACCESS-01# clock set 09:20:00 20 September 2026
+Verify:
+SW-ACCESS-01# show clock
+Once NTP is working, NTP should be the preferred time source.
+
+6. Configure NTP Server
+SW-ACCESS-01(config)# ntp server 172.16.32.11
+Verify:
+SW-ACCESS-01# show ntp status
+SW-ACCESS-01# show ntp associations
+If the NTP server is unreachable, check:
+SW-ACCESS-01# ping 172.16.32.11
+
+7. Configure Syslog Server
+SW-ACCESS-01(config)# logging host 172.30.101.20
+Set an appropriate logging level:
+SW-ACCESS-01(config)# logging trap warnings
+Set timestamps:
+SW-ACCESS-01(config)# service timestamps log datetime msec
+Verify:
+SW-ACCESS-01# show logging
+
+8. Configure SNMP
+For a modern deployment, SNMPv3 is preferable.
+SNMPv3 example
+SW-ACCESS-01(config)# snmp-server view NMSVIEW iso included
+SW-ACCESS-01(config)# snmp-server group NMSGROUP v3 priv read NMSVIEW
+SW-ACCESS-01(config)# snmp-server user NMSUSER NMSGROUP v3 auth sha AuthPassword123 priv aes 128 PrivPassword123
+Configure your NMS/SNMP server:
+SW-ACCESS-01(config)# snmp-server host 172.30.101.30 version 3 priv NMSUSER
+Set the device location/contact:
+SW-ACCESS-01(config)# snmp-server location Main Office
+SW-ACCESS-01(config)# snmp-server contact Network-Admin
+Verify:
+SW-ACCESS-01# show snmp
+SW-ACCESS-01# show snmp user
+
+9. Configure CDP and LLDP
+CDP
+SW-ACCESS-01(config)# cdp run
+LLDP
+SW-ACCESS-01(config)# lldp run
+Verify:
+SW-ACCESS-01# show cdp neighbors
+SW-ACCESS-01# show lldp neighbors
+
+10. Configure Enable Secret
+SW-ACCESS-01(config)# enable secret StrongEnablePassword
+enable secret is preferred over the older enable password.
+
+11. Create Local User with Full Privilege
+SW-ACCESS-01(config)# username admin privilege 15 secret StrongAdminPassword
+Verify:
+SW-ACCESS-01# show running-config | include username
+You should see an encrypted/hashed secret rather than the plain password.
+
+12. Verify Local User
+SW-ACCESS-01# show running-config | include username
+
+13. Configure Console with Logging Synchronous
+SW-ACCESS-01(config)# line console 0
+SW-ACCESS-01(config-line)# login local
+SW-ACCESS-01(config-line)# logging synchronous
+SW-ACCESS-01(config-line)# exec-timeout 10 0
+SW-ACCESS-01(config-line)# exit
+This prevents system messages from disrupting your command line.
+
+14. Enable Telnet
+Telnet is insecure because credentials are transmitted without encryption. If it is required for legacy management, configure it separately from SSH.
+SW-ACCESS-01(config)# line vty 0 4
+SW-ACCESS-01(config-line)# login local
+SW-ACCESS-01(config-line)# transport input telnet
+SW-ACCESS-01(config-line)# logging synchronous
+SW-ACCESS-01(config-line)# exec-timeout 10 0
+SW-ACCESS-01(config-line)# exit
+If your switch has VTY lines 5-15, configure them too:
+SW-ACCESS-01(config)# line vty 5 15
+SW-ACCESS-01(config-line)# login local
+SW-ACCESS-01(config-line)# transport input telnet
+SW-ACCESS-01(config-line)# logging synchronous
+SW-ACCESS-01(config-line)# exec-timeout 10 0
+SW-ACCESS-01(config-line)# exit
+
+15. Enable SSH
+First configure the domain name:
+SW-ACCESS-01(config)# ip domain name edison-bd.com
+Generate RSA keys:
+SW-ACCESS-01(config)# crypto key generate rsa modulus 2048
+Set SSH version 2:
+SW-ACCESS-01(config)# ip ssh version 2
+Configure VTY for SSH.
+If you want SSH + Telnet:
+SW-ACCESS-01(config)# line vty 0 4
+SW-ACCESS-01(config-line)# login local
+SW-ACCESS-01(config-line)# transport input ssh telnet
+SW-ACCESS-01(config-line)# logging synchronous
+SW-ACCESS-01(config-line)# exit
+If you want SSH only, which is preferable:
+SW-ACCESS-01(config)# line vty 0 4
+SW-ACCESS-01(config-line)# login local
+SW-ACCESS-01(config-line)# transport input ssh
+SW-ACCESS-01(config-line)# logging synchronous
+SW-ACCESS-01(config-line)# exit
+Verify:
+SW-ACCESS-01# show ip ssh
+
+16. Configure VLANs
+Create management VLAN:
+SW-ACCESS-01(config)# vlan 101
+SW-ACCESS-01(config-vlan)# name MANAGEMENT
+SW-ACCESS-01(config-vlan)# exit
+Create camera VLAN:
+SW-ACCESS-01(config)# vlan 216
+SW-ACCESS-01(config-vlan)# name CAMERA
+SW-ACCESS-01(config-vlan)# exit
+Verify:
+SW-ACCESS-01# show vlan brief
+
+17. Configure Uplink
+Assume Gi1/0/24 is the uplink.
+SW-ACCESS-01(config)# interface GigabitEthernet1/0/24
+SW-ACCESS-01(config-if)# description ### UPLINK-TO-DISTRIBUTION ###
+SW-ACCESS-01(config-if)# switchport mode trunk
+SW-ACCESS-01(config-if)# switchport trunk allowed vlan 101,216
+SW-ACCESS-01(config-if)# no shutdown
+SW-ACCESS-01(config-if)# exit
+On platforms that support it, you can explicitly remove VLAN 1:
+SW-ACCESS-01(config-if)# switchport trunk allowed vlan 101,216
+Verify:
+SW-ACCESS-01# show interfaces trunk
+
+18. Set Remote IP in Management VLAN and Gateway
+Create the SVI:
+SW-ACCESS-01(config)# interface vlan 101
+SW-ACCESS-01(config-if)# description ### MANAGEMENT ###
+SW-ACCESS-01(config-if)# ip address 172.30.101.10 255.255.255.0
+SW-ACCESS-01(config-if)# no shutdown
+SW-ACCESS-01(config-if)# exit
+For a Layer-2 switch, configure the default gateway:
+SW-ACCESS-01(config)# ip default-gateway 172.30.101.1
+This is the normal approach for an L2 access switch.
+Verify:
+SW-ACCESS-01# show ip interface brief
+SW-ACCESS-01# ping 172.30.101.1
+
+19. Configure Downlinks
+For camera ports, for example Gi1/0/1-23:
+SW-ACCESS-01(config)# interface range GigabitEthernet1/0/1 - 23
+SW-ACCESS-01(config-if-range)# description ### CAMERA ###
+SW-ACCESS-01(config-if-range)# switchport mode access
+SW-ACCESS-01(config-if-range)# switchport access vlan 216
+SW-ACCESS-01(config-if-range)# spanning-tree portfast
+SW-ACCESS-01(config-if-range)# spanning-tree bpduguard enable
+SW-ACCESS-01(config-if-range)# no shutdown
+SW-ACCESS-01(config-if-range)# exit
+Verify:
+SW-ACCESS-01# show vlan brief
+SW-ACCESS-01# show interfaces status
+
+20. Configure Spanning Tree
+For a typical access switch:
+SW-ACCESS-01(config)# spanning-tree mode rapid-pvst
+Check:
+SW-ACCESS-01# show spanning-tree
+If your organization uses MST instead, don't enable Rapid-PVST blindly; the entire STP design should be consistent.
+
+21. PortFast + BPDU Guard
+For end-device ports:
+SW-ACCESS-01(config)# interface range GigabitEthernet1/0/1 - 23
+SW-ACCESS-01(config-if-range)# spanning-tree portfast
+SW-ACCESS-01(config-if-range)# spanning-tree bpduguard enable
+SW-ACCESS-01(config-if-range)# exit
+Alternatively, globally:
+SW-ACCESS-01(config)# spanning-tree portfast default
+SW-ACCESS-01(config)# spanning-tree portfast bpduguard default
+Do not apply PortFast to your uplink/trunk ports.
+
+22. Configure DHCP Snooping
+Enable DHCP Snooping:
+SW-ACCESS-01(config)# ip dhcp snooping
+Enable it for the VLAN:
+SW-ACCESS-01(config)# ip dhcp snooping vlan 101,216
+Trust the uplink toward the legitimate DHCP server:
+SW-ACCESS-01(config)# interface GigabitEthernet1/0/24
+SW-ACCESS-01(config-if)# ip dhcp snooping trust
+SW-ACCESS-01(config-if)# exit
+Do not trust normal end-device ports.
+Verify:
+SW-ACCESS-01# show ip dhcp snooping
+SW-ACCESS-01# show ip dhcp snooping binding
+
+23. Configure Port Descriptions
+Example:
+SW-ACCESS-01(config)# interface Gi1/0/1
+SW-ACCESS-01(config-if)# description ### CAMERA-01 ###
+SW-ACCESS-01(config-if)# exit
+
+SW-ACCESS-01(config)# interface Gi1/0/2
+SW-ACCESS-01(config-if)# description ### CAMERA-02 ###
+SW-ACCESS-01(config-if)# exit
+For the uplink:
+SW-ACCESS-01(config)# interface Gi1/0/24
+SW-ACCESS-01(config-if)# description ### UPLINK-TO-DIST-SW ###
+SW-ACCESS-01(config-if)# exit
+Good descriptions make troubleshooting much easier.
+
+24. Disable Unused Ports and Services
+Suppose ports Gi1/0/20-23 are unused:
+SW-ACCESS-01(config)# interface range Gi1/0/20 - 23
+SW-ACCESS-01(config-if-range)# description ### UNUSED ###
+SW-ACCESS-01(config-if-range)# shutdown
+SW-ACCESS-01(config-if-range)# exit
+You can also disable unnecessary services, depending on your environment.
+For example, if CDP is not required on an end-user port:
+SW-ACCESS-01(config)# interface range Gi1/0/1 - 23
+SW-ACCESS-01(config-if-range)# no cdp enable
+SW-ACCESS-01(config-if-range)# exit
+However, don't disable CDP/LLDP globally if you use them for network topology discovery.
+
+25. Verify Gateway, Uplink and Remote Connectivity
+Check interfaces
+SW-ACCESS-01# show ip interface brief
+Check VLANs
+SW-ACCESS-01# show vlan brief
+Check trunk
+SW-ACCESS-01# show interfaces trunk
+Check gateway
+SW-ACCESS-01# ping 172.30.101.1
+Check remote management/NMS
+SW-ACCESS-01# ping 172.30.101.20
+SW-ACCESS-01# ping 172.30.101.30
+Check uplink neighbor
+SW-ACCESS-01# show cdp neighbors detail
+Check LLDP
+SW-ACCESS-01# show lldp neighbors detail
+Check STP
+SW-ACCESS-01# show spanning-tree
+
+26. Save Configuration
+First check:
+SW-ACCESS-01# show running-config
+Then save:
+SW-ACCESS-01# copy running-config startup-config
+Press Enter when asked for the destination filename.
+You can also use:
+SW-ACCESS-01# write memory
+
+27. Check Remote Login
+27. Check Configuration
+Useful final checks:
+show running-config
+show startup-config
+show vlan brief
+show interfaces status
+show interfaces trunk
+show ip interface brief
+show spanning-tree
+show ip dhcp snooping
+show logging
+show ntp status
+show cdp neighbors
+show lldp neighbors
+show ip ssh
+show users
+
+28. Configure MOTD
+I would actually put this near the beginning of the configuration, but following your requested order:
+SW-ACCESS-01(config)# banner motd #
+************************************************************
+* WARNING: Authorized Access Only                          *
+* This device is monitored and all activities are logged. *
+************************************************************
+#
+When connecting:
+************************************************************
+* WARNING: Authorized Access Only                          *
+* This device is monitored and all activities are logged. *
+************************************************************
+
+Complete Standard Order
+For your documentation/checklist, I would organize the entire process as:
+01. Enable Privileged Mode
+02. Enter Global Configuration Mode
+03. Disable DNS Lookup
+04. Set Hostname
+05. Set Timezone
+06. Set/Verify System Time
+07. Configure NTP
+08. Configure Syslog
+09. Configure SNMP
+10. Configure CDP and LLDP
+11. Configure Enable Secret
+12. Create Local Privilege-15 User
+13. Verify Local User
+14. Configure Console Line
+15. Configure Console Logging Synchronous
+16. Configure Telnet (if required)
+17. Configure SSH
+18. Configure VTY Lines
+19. Configure VTY Logging Synchronous
+20. Configure VLANs
+21. Configure Uplink
+22. Configure Management SVI / Remote IP
+23. Configure Default Gateway
+24. Configure Downlinks
+25. Configure Spanning Tree
+26. Configure PortFast
+27. Configure BPDU Guard
+28. Configure DHCP Snooping
+29. Configure Port Descriptions
+30. Disable Unused Ports
+31. Disable Unnecessary Services
+32. Verify VLANs
+33. Verify Uplink/Trunks
+34. Verify Gateway Connectivity
+35. Verify Remote/NMS Connectivity
+36. Verify STP
+37. Verify DHCP Snooping
+38. Verify SNMP/Syslog/NTP
+39. Configure MOTD
+40. Check Running Configuration
+41. Save Running Configuration
+42. Verify Startup Configuration
